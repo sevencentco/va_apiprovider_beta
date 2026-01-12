@@ -1,18 +1,17 @@
 import asyncio
-from threading import Lock
-from sqlalchemy import create_engine
-from sqlalchemy.orm import (
-    declarative_base, scoped_session, sessionmaker
-)
+from sqlalchemy.ext.asyncio import ( create_async_engine, AsyncSession, async_sessionmaker, )
+from sqlalchemy.orm import declarative_base
+from contextlib import asynccontextmanager
+
 
 class DatabaseAlchemy:
     def __init__(self, app=None, uri=None):
         self.app = app
-        self._engine = None
-        self._engine_lock = Lock()
-
         self.uri = uri
-        self.session = None
+
+        self._engine = None
+        self._sessionmaker = None
+
         self.Model = declarative_base()
 
         if app is not None:
@@ -24,34 +23,45 @@ class DatabaseAlchemy:
     @property
     def engine(self):
         if self._engine is None:
-            with self._engine_lock:
-                if self._engine is None:
-                    self._engine = create_engine(self.uri)
+            self._engine = create_async_engine(self.uri,echo=False,future=True,)
         return self._engine
 
     @property
     def metadata(self):
         return self.Model.metadata
 
-    def _make_scoped_session(self):
-        def _scopefunc():
+    def _make_sessionmaker(self):
+        return async_sessionmaker(bind=self.engine,class_=AsyncSession,expire_on_commit=False,)
+
+    @asynccontextmanager
+    async def session(self) -> AsyncSession:
+        """
+        Usage:
+        async with db.session() as session:
+            ...
+        """
+        if self._sessionmaker is None:
+            self._sessionmaker = self._make_sessionmaker()
+
+        async with self._sessionmaker() as session:
             try:
-                return asyncio.current_task()
-            except RuntimeError:
-                print("You are calling a synchronous function — use async to run it properly")
-                return None        
-        Session = scoped_session(sessionmaker(bind=self.engine),scopefunc=asyncio.current_task,)
-        self.Model.query = Session.query_property()
-        return Session
+                yield session
+                if self.app and self.app.config.get("SQLALCHEMY_COMMIT_ON_RESPONSE"):
+                    await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
 
     # -----------------------
     # Init app
     # -----------------------
     def init_app(self, app=None, uri=None):
-        uri_ = (uri or self.uri or app.config.get("SQLALCHEMY_DATABASE_URI") or "sqlite:///:memory:")
+        app = app or self.app
 
-        self.uri = uri_
-        self.session = self._make_scoped_session()
+        self.uri = ( uri or self.uri or app.config.get("SQLALCHEMY_DATABASE_URI")
+            or "sqlite+aiosqlite:///:memory:" )
 
         if not hasattr(app, "ctx"):
             app.ctx = type("C", (), {})()
@@ -63,23 +73,19 @@ class DatabaseAlchemy:
 
         @app.middleware("response")
         async def shutdown_session(request, response):
-            try:
-                if app.config.get("SQLALCHEMY_COMMIT_ON_RESPONSE"):
-                    self.session.commit()
-            except:
-                self.session.rollback()
-                raise
-            finally:
-                self.session.remove()
+            # Session lifecycle đã xử lý bằng context manager
+            return response
 
     # -----------------------
     # Helpers
     # -----------------------
-    def create_all(self):
-        self.metadata.create_all(self.engine)
+    async def create_all(self):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(self.metadata.create_all)
 
-    def drop_all(self):
-        self.metadata.drop_all(self.engine)
+    async def drop_all(self):
+        async with self.engine.begin() as conn:
+            await conn.run_sync(self.metadata.drop_all)
 
     def __repr__(self):
-        return f"<SQLAlchemy engine={self.uri!r}>"
+        return f"<AsyncSQLAlchemy engine={self.uri!r}>"
