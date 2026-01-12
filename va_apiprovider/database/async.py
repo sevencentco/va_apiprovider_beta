@@ -1,7 +1,10 @@
-import asyncio
+from contextvars import ContextVar
 from sqlalchemy.ext.asyncio import ( create_async_engine, AsyncSession, async_sessionmaker, )
 from sqlalchemy.orm import declarative_base
-from contextlib import asynccontextmanager
+
+_current_session: ContextVar[AsyncSession | None] = ContextVar(
+    "current_db_session", default=None
+)
 
 
 class DatabaseAlchemy:
@@ -18,50 +21,41 @@ class DatabaseAlchemy:
             self.init_app(app)
 
     # -----------------------
-    # Engine + Session
+    # Engine
     # -----------------------
     @property
     def engine(self):
         if self._engine is None:
-            self._engine = create_async_engine(self.uri,echo=False,future=True,)
+            self._engine = create_async_engine( self.uri, echo=False, future=True, )
         return self._engine
 
     @property
     def metadata(self):
         return self.Model.metadata
 
+    # -----------------------
+    # Session factory
+    # -----------------------
     def _make_sessionmaker(self):
-        return async_sessionmaker(bind=self.engine,class_=AsyncSession,expire_on_commit=False,)
+        return async_sessionmaker( bind=self.engine, class_=AsyncSession, expire_on_commit=False, )
 
-    @asynccontextmanager
-    async def session(self) -> AsyncSession:
-        """
-        Usage:
-        async with db.session() as session:
-            ...
-        """
-        if self._sessionmaker is None:
-            self._sessionmaker = self._make_sessionmaker()
-
-        async with self._sessionmaker() as session:
-            try:
-                yield session
-                if self.app and self.app.config.get("SQLALCHEMY_COMMIT_ON_RESPONSE"):
-                    await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-            finally:
-                await session.close()
+    @property
+    def session(self) -> AsyncSession:
+        session = _current_session.get()
+        if session is None:
+            raise RuntimeError("No active DB session. Did you forget to enable Sanic middleware?")
+        return session
 
     # -----------------------
-    # Init app
+    # Init app (Sanic)
     # -----------------------
     def init_app(self, app=None, uri=None):
         app = app or self.app
 
-        self.uri = ( uri or self.uri or app.config.get("SQLALCHEMY_DATABASE_URI")
-            or "sqlite+aiosqlite:///:memory:" )
+        self.uri = (
+            uri or self.uri or app.config.get("SQLALCHEMY_DATABASE_URI")
+            or "sqlite+aiosqlite:///:memory:"
+        )
 
         if not hasattr(app, "ctx"):
             app.ctx = type("C", (), {})()
@@ -71,9 +65,35 @@ class DatabaseAlchemy:
 
         app.ctx.extensions["sqlalchemy"] = self
 
+        # -------- request: open session --------
+        @app.middleware("request")
+        async def open_db_session(request):
+            if self._sessionmaker is None:
+                self._sessionmaker = self._make_sessionmaker()
+
+            session = self._sessionmaker()
+            token = _current_session.set(session)
+            request.ctx._db_session_token = token
+
+        # -------- response: close session --------
         @app.middleware("response")
-        async def shutdown_session(request, response):
-            # Session lifecycle đã xử lý bằng context manager
+        async def close_db_session(request, response):
+            token = getattr(request.ctx, "_db_session_token", None)
+            if not token:
+                return response
+
+            session = _current_session.get()
+
+            try:
+                if app.config.get("SQLALCHEMY_COMMIT_ON_RESPONSE"):
+                    await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
+                _current_session.reset(token)
+
             return response
 
     # -----------------------
