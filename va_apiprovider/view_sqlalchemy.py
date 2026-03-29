@@ -449,7 +449,8 @@ class SQLAView(ModelView):
         try:
             for preprocess in self.preprocess['GET_MANY']:     
                 resp = await run_process(process=preprocess, request=request,
-                        search_params=search_params, Model=self.model)
+                        search_params=search_params, Model=self.model, 
+                        collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -486,7 +487,8 @@ class SQLAView(ModelView):
             headers = {}
             for postprocess in self.postprocess['GET_MANY']:
                 resp = await run_process(process=postprocess, request=request, result=result, 
-                        search_params=search_params, Model=self.model, headers=headers)
+                        search_params=search_params, Model=self.model, headers=headers, 
+                        collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -500,7 +502,8 @@ class SQLAView(ModelView):
         try:
             for preprocess in self.preprocess['GET_SINGLE']:           
                 resp = await run_process(process=preprocess, request=request, 
-                        instance_id=instid, Model=self.model)
+                        instance_id=instid, Model=self.model, 
+                        collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp                
                 if resp is not None:
@@ -538,7 +541,8 @@ class SQLAView(ModelView):
             headers = {}
             for postprocess in self.postprocess['GET_SINGLE']:
                 resp = await run_process(process=postprocess,request=request, instance_id=instid, 
-                    result=result, Model=self.model, headers=headers)
+                    result=result, Model=self.model, headers=headers, 
+                        collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -555,7 +559,8 @@ class SQLAView(ModelView):
         try:
             for preprocess in self.preprocess['DELETE_MANY']:
                 resp = await run_process(process=preprocess, request=request, 
-                    search_params=search_params, Model=self.model)
+                    search_params=search_params, Model=self.model, 
+                        collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -583,7 +588,8 @@ class SQLAView(ModelView):
             headers = {}
             for postprocess in self.postprocess['DELETE_MANY']:
                 resp = await run_process(process=postprocess, request=request, result=result, 
-                    search_params=search_params, Model=self.model, headers=headers)
+                    search_params=search_params, Model=self.model, headers=headers, 
+                        collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -599,7 +605,8 @@ class SQLAView(ModelView):
         try:
             for preprocess in self.preprocess['DELETE_SINGLE']:
                 resp = await run_process(process=preprocess, request=request, instance_id=instid,
-                    relation_name=relationname, relation_instance_id=relationinstid, Model=self.model)
+                    relation_name=relationname, relation_instance_id=relationinstid, 
+                    Model=self.model, collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
                 if resp is not None:
@@ -626,7 +633,8 @@ class SQLAView(ModelView):
             headers = {}
             for postprocess in self.postprocess['DELETE_SINGLE']:
                 resp = await run_process(process=postprocess, request=request, instance_id=instid, 
-                        was_deleted=was_deleted, Model=self.model, headers=headers) 
+                        was_deleted=was_deleted, Model=self.model, headers=headers, 
+                        collection_name=self.collection_name) 
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -650,7 +658,7 @@ class SQLAView(ModelView):
         try:
             for preprocess in self.preprocess['POST']:
                 resp = await run_process(process=preprocess, request=request, 
-                        data=data, Model=self.model)
+                        data=data, Model=self.model, collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -677,7 +685,7 @@ class SQLAView(ModelView):
             headers = {}
             for postprocess in self.postprocess['POST']:
                 resp = await run_process(process=postprocess, request=request, result=result, 
-                        Model=self.model, headers=headers)
+                        Model=self.model, headers=headers, collection_name=self.collection_name)
                 if (resp is not None) and isinstance(resp, HTTPResponse):
                     return resp
         except ProcessingException as exception:
@@ -701,7 +709,8 @@ class SQLAView(ModelView):
             try:
                 for preprocess in self.preprocess['PUT_MANY']:
                     resp = await run_process(process=preprocess, request=request, 
-                            search_params=search_params, data=data, Model=self.model)
+                            search_params=search_params, data=data, Model=self.model, 
+                            collection_name=self.collection_name)
                     if (resp is not None) and isinstance(resp, HTTPResponse):
                         return resp
             except ProcessingException as exception:
@@ -711,7 +720,8 @@ class SQLAView(ModelView):
             for preprocess in self.preprocess['PUT_SINGLE']:
                 try:
                     resp = await run_process(process=preprocess, request=request, 
-                        instance_id=instid, data=data, Model=self.model)
+                        instance_id=instid, data=data, Model=self.model, 
+                        collection_name=self.collection_name)
                     if (resp is not None) and isinstance(resp, HTTPResponse):
                         return resp
                     if resp is not None:
@@ -761,7 +771,8 @@ class SQLAView(ModelView):
             try:
                 for postprocess in self.postprocess['PUT_MANY']:
                     resp = await run_process(process=postprocess, request=request, query=query, 
-                        result=result, search_params=search_params, Model=self.model, headers=headers)                        
+                        result=result, search_params=search_params, Model=self.model, 
+                        headers=headers, collection_name=self.collection_name)                        
                     if (resp is not None) and isinstance(resp, HTTPResponse):
                         return resp
             except ProcessingException as exception:
@@ -772,7 +783,8 @@ class SQLAView(ModelView):
             try:
                 for postprocess in self.postprocess['PUT_SINGLE']:
                     resp = await run_process(process=postprocess,request=request, 
-                            instance_id=instid, result=result, Model=self.model, headers=headers)
+                            instance_id=instid, result=result, Model=self.model, headers=headers, 
+                            collection_name=self.collection_name)
                     if (resp is not None) and isinstance(resp, HTTPResponse):
                         return resp
             except ProcessingException as exception:
